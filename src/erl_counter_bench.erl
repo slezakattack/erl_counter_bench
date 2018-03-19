@@ -3,9 +3,9 @@
 %% API exports
 -export([main/1, delete_ets_if_exists/1, do_iterate/2, bench/4, iterate/3]).
 
--define(DEFAULT_ETS_OPTS, [named_table, set, public, {write_concurrency, true}, {read_concurrency, true}]).
+-define(DEFAULT_ETS_OPTS, [named_table, set, public, {write_concurrency, true}]).
 
--define(ITERATIONS, [1000]).
+-define(ITERATIONS, [10000, 100000, 1000000, 10000000]).
 -define(NUM_PROCS, [10, 100, 1000, 10000, 100000, 1000000]).
 
 -define(MICROS_IN_SEC, 1000000).
@@ -28,7 +28,7 @@ main(_Args) ->
        {TotalRunTime, _Result} = timer:tc(erl_counter_bench, bench, [BenchModule, PropList, NumProcs, NumIterations]),
        io:format("[~10b][~10b][~p]: ~50fs~n", [NumProcs, NumIterations, BenchModule, TotalRunTime/?MICROS_IN_SEC])
      end
-    || {BenchModule, PropList} <- ?TEST_CONFIG, NumProcs <- ?NUM_PROCS, NumIterations <- ?ITERATIONS],
+    || {BenchModule, PropList} <- ?TEST_CONFIG, NumIterations <- ?ITERATIONS, NumProcs <- ?NUM_PROCS],
     erlang:halt(0).
 
 
@@ -51,8 +51,8 @@ bench(BenchModule, PropList, NumProcs, NumIterations)->
     BenchSetup = BenchModule:bench_setup(PropList),
     Self = self(),
     Seq = lists:seq(1, NumProcs),
-    [spawn_link(fun() -> iterate({BenchModule, BenchSetup}, Self, NumIterations) end) || _ <- Seq],
-    PerProcessTotals =
+    [spawn_link(fun() -> iterate({BenchModule, BenchSetup}, Self, NumIterations div NumProcs) end) || _ <- Seq],
+    _PerProcessTotals =
         [begin
              receive
                {results, RunTime}  -> RunTime
@@ -61,7 +61,7 @@ bench(BenchModule, PropList, NumProcs, NumIterations)->
 %%    TotalPerProcessTime = lists:foldl(fun(ProcessRunTime, AllProcessesTotal) -> ProcessRunTime + AllProcessesTotal end, 0, PerProcessTotals),
 %%    io:format("[~10b][~10b][~p]: ~50fs~n", [NumProcs, NumIterations, BenchModule, TotalPerProcessTime/?MICROS_IN_SEC]).
 
-iterate({BenchModule, BenchSetup}, ParentPid, Iterations)->
+iterate({BenchModule, BenchSetup}, ParentPid, Iterations) ->
     {TotalRunTime, _Result} = timer:tc(?MODULE, do_iterate, [{BenchModule, BenchSetup}, Iterations]),
     ParentPid ! {results, TotalRunTime}.
 
